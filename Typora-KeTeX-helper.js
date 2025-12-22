@@ -280,20 +280,8 @@ const LatexAutoCompleter = {
                     // 处理块级公式
                     this.applySnippetMathBlock(cmd, cmEditor, inputKeyword);
                 } else {
-                    // 处理内联公式的原有逻辑
-                    const anchor = File.editor.autoComplete.state.anchor;
-                    if (anchor) {
-                        const r = File.editor.selection.getRangy();
-                        const textNode = anchor.containerNode.firstChild || anchor.containerNode;
-                        r.setStart(textNode, anchor.start);
-                        r.setEnd(textNode, anchor.end);
-                        File.editor.selection.setRange(r, true);
-                        // 执行删除动作
-                        File.editor.UserOp.pasteHandler(File.editor, "", true);
-                    }
-
-                    // 插入新 Snippet
-                    this.applySnippet(cmd);
+                    // 处理内联公式
+                    this.applySnippetInline(cmd, inputKeyword);
                 }
 
                 return ""; // 阻止默认插入
@@ -307,10 +295,113 @@ const LatexAutoCompleter = {
             // 块级公式模式
             this.showAutoCompleteForMathBlock(candidates, cmEditor, inputKeyword, callbacks);
         } else {
-            // 内联公式的原有逻辑
-            File.editor.autoComplete.attachToRange();
-            File.editor.autoComplete.show(candidates, bookmark, inputKeyword, callbacks);
+            // 内联公式：使用自定义补全菜单，显示所有候选项
+            this.showAutoCompleteForInline(candidates, bookmark, inputKeyword, callbacks);
         }
+    },
+
+    showAutoCompleteForInline: function(candidates, bookmark, inputKeyword, callbacks) {
+        // 为内联公式创建自定义补全菜单，显示所有候选项
+        this.hideAutoComplete();
+        
+        let selectedIndex = 0;
+
+        const container = document.createElement('div');
+        container.className = 'latex-autocomplete-container';
+        container.style.cssText = `
+            position: fixed;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 999999;
+            min-width: 200px;
+            max-height: 300px;
+            overflow-y: auto;
+        `;
+
+        const list = document.createElement('ul');
+        list.style.cssText = 'list-style: none; margin: 0; padding: 0;';
+
+        candidates.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = 'plugin-latex-item' + (index === 0 ? ' active' : '');
+            li.innerHTML = `
+                <span class="cmd">${item.key}</span>
+                <span class="hint">${item.hint}</span>
+            `;
+            li.style.cssText = `
+                display: flex;
+                justify-content: space-between;
+                padding: 4px 10px;
+                cursor: pointer;
+            `;
+            li.addEventListener('click', () => {
+                callbacks.beforeApply(item);
+                this.hideAutoComplete();
+            });
+            li.addEventListener('mouseover', () => {
+                Array.from(list.children).forEach(child => child.classList.remove('active'));
+                li.classList.add('active');
+                selectedIndex = index;
+            });
+            list.appendChild(li);
+        });
+
+        container.appendChild(list);
+        document.body.appendChild(container);
+        
+        // 保存容器引用
+        this.currentAutoCompleteContainer = container;
+
+        // 定位到当前光标位置（向下偏移以避免 Typora 预览层）
+        const range = File.editor.selection.getRangy();
+        if (range && range.nativeRange) {
+            const rect = range.nativeRange.getBoundingClientRect();
+            container.style.left = rect.left + 'px';
+            container.style.top = (rect.top + 60) + 'px';
+        }
+
+        // 键盘事件处理
+        const handleKeydown = (e) => {
+            if (!document.body.contains(container)) {
+                document.removeEventListener('keydown', handleKeydown, true);
+                return;
+            }
+            
+            const isAutoCompleteKey = ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key);
+            
+            if (isAutoCompleteKey) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            switch (e.key) {
+                case 'ArrowDown':
+                    selectedIndex = (selectedIndex + 1) % candidates.length;
+                    Array.from(list.children).forEach((child, idx) => {
+                        child.classList.toggle('active', idx === selectedIndex);
+                    });
+                    return;
+                case 'ArrowUp':
+                    selectedIndex = (selectedIndex - 1 + candidates.length) % candidates.length;
+                    Array.from(list.children).forEach((child, idx) => {
+                        child.classList.toggle('active', idx === selectedIndex);
+                    });
+                    return;
+                case 'Enter':
+                    const cmd = candidates[selectedIndex];
+                    callbacks.beforeApply(cmd);
+                    this.hideAutoComplete();
+                    return;
+                case 'Escape':
+                    this.hideAutoComplete();
+                    return;
+            }
+        };
+
+        document.addEventListener('keydown', handleKeydown, true);
+        this.currentAutoCompleteKeyboardHandler = handleKeydown;
     },
 
     showAutoCompleteForCodeMirror: function(candidates, cmEditor, inputKeyword, callbacks) {
@@ -771,6 +862,90 @@ const LatexAutoCompleter = {
         } catch (e) {
             console.error("[APPLY] Error applying snippet:", e.message);
             console.error("[APPLY] Stack:", e.stack);
+        }
+    },
+
+    applySnippetInline: function(cmd, inputKeyword) {
+        // 为内联公式删除关键字并插入补全
+        console.log("[APPLY-INLINE] Starting applySnippetInline");
+        console.log("[APPLY-INLINE] cmd:", cmd);
+        console.log("[APPLY-INLINE] inputKeyword:", inputKeyword);
+        
+        try {
+            // 获取当前选区
+            const selection = File.editor.selection.getRangy();
+            if (!selection || !selection.collapsed) {
+                console.log("[APPLY-INLINE] ERROR: Selection not available or not collapsed");
+                return;
+            }
+            
+            // 获取光标所在的容器和偏移量
+            const range = selection.nativeRange;
+            const container = range.startContainer;
+            const offset = range.startOffset;
+            
+            console.log("[APPLY-INLINE] container.nodeType:", container.nodeType, "container.textContent:", JSON.stringify(container.textContent?.substring(0, 50)));
+            
+            if (container.nodeType !== 3) { // Text node
+                console.log("[APPLY-INLINE] ERROR: Container is not a text node");
+                return;
+            }
+            
+            const text = container.textContent;
+            
+            // 从光标向前查找关键字
+            const endPos = offset;
+            const startPos = Math.max(0, endPos - inputKeyword.length);
+            
+            console.log("[APPLY-INLINE] text:", JSON.stringify(text), "startPos:", startPos, "endPos:", endPos);
+            
+            // 验证前面的文本确实是关键字
+            const beforeKeyword = text.substring(startPos, endPos);
+            console.log("[APPLY-INLINE] beforeKeyword:", JSON.stringify(beforeKeyword), "inputKeyword:", JSON.stringify(inputKeyword));
+            
+            if (beforeKeyword !== inputKeyword) {
+                console.log("[APPLY-INLINE] WARNING: beforeKeyword doesn't match inputKeyword");
+            }
+            
+            // 删除关键字
+            const beforeText = text.substring(0, startPos);
+            const afterText = text.substring(endPos);
+            const newText = beforeText + cmd.snippet + afterText;
+            
+            console.log("[APPLY-INLINE] Replacing: beforeText=' ' + cmd.snippet + afterText");
+            
+            // 修改文本节点
+            container.textContent = newText;
+            
+            // 计算光标位置
+            const snippetEndOffset = startPos + cmd.snippet.length;
+            const cursorOffset = snippetEndOffset + (cmd.offset || 0);
+            const clampedOffset = Math.max(0, Math.min(cursorOffset, newText.length));
+            
+            console.log("[APPLY-INLINE] Cursor calculation: startPos=" + startPos + ", cmd.snippet.length=" + cmd.snippet.length + ", offset=" + (cmd.offset || 0) + ", final=" + clampedOffset);
+            
+            // 设置光标位置
+            const newRange = document.createRange();
+            newRange.setStart(container, clampedOffset);
+            newRange.collapse(true);
+            
+            const newSelection = window.getSelection();
+            newSelection.removeAllRanges();
+            newSelection.addRange(newRange);
+            
+            console.log("[APPLY-INLINE] Cursor set to position", clampedOffset);
+            
+            // 通知 Typora 编辑器内容已更新
+            if (File && File.editor && File.editor.selection && File.editor.selection.scrollAdjust) {
+                File.editor.selection.scrollAdjust();
+                console.log("[APPLY-INLINE] Called scrollAdjust");
+            }
+            
+            this.hideAutoComplete();
+            console.log("[APPLY-INLINE] Snippet applied successfully");
+        } catch (e) {
+            console.error("[APPLY-INLINE] Error applying snippet:", e.message);
+            console.error("[APPLY-INLINE] Stack:", e.stack);
         }
     },
 
