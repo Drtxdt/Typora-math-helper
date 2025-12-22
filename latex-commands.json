@@ -1,0 +1,8 @@
+[
+    { "key": "\\frac", "hint": "分式", "snippet": "\\frac{}{}", "offset": -3 },
+    { "key": "\\sqrt", "hint": "根号", "snippet": "\\sqrt{}", "offset": -1 },
+    { "key": "\\sum", "hint": "求和", "snippet": "\\sum_{}^{}", "offset": -4 },
+    { "key": "\\int", "hint": "积分", "snippet": "\\int_{}^{}", "offset": -4 },
+    { "key": "\\alpha", "hint": "α", "snippet": "\\alpha ", "offset": 0 },
+    { "key": "\\begin", "hint": "环境", "snippet": "\\begin{aligned}\n$0\n\\end{aligned}", "offset": -14 }
+]
