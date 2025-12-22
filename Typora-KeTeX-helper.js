@@ -63,7 +63,6 @@ const LatexAutoCompleter = {
         document.addEventListener("input", (e) => {
             // 如果标记了忽略下一次 input，则跳过
             if (this.suppressNextInput) {
-                console.log("[INPUT] Suppressing input event");
                 this.suppressNextInput = false;
                 return;
             }
@@ -139,7 +138,6 @@ const LatexAutoCompleter = {
             return;
         }
 
-        console.log("[DEBUG] Matched LaTeX command:", match[0]);
         const inputKeyword = match[0];
         const candidates = this.commands.filter(cmd => cmd.key.startsWith(inputKeyword));
         
@@ -152,11 +150,6 @@ const LatexAutoCompleter = {
     },
 
     onInputMathBlock: function(target, mathBlock) {
-        console.log("[INPUT-BLOCK] onInputMathBlock called");
-        console.log("[INPUT-BLOCK] target element:", target);
-        console.log("[INPUT-BLOCK] target.tagName:", target?.tagName);
-        console.log("[INPUT-BLOCK] mathBlock element:", mathBlock);
-        console.log("[INPUT-BLOCK] mathBlock HTML:", mathBlock?.outerHTML?.substring(0, 300));
         
         // 获取块内的文本内容（不需要精确的节点追踪）
         const treeWalker = document.createTreeWalker(
@@ -188,25 +181,18 @@ const LatexAutoCompleter = {
         // 清理末尾空白用于匹配
         const trimmedForMatch = fullText.trim();
         
-        console.log("[INPUT-BLOCK] Trimmed text for matching:", JSON.stringify(trimmedForMatch));
-        
         // 匹配末尾的 LaTeX 命令
         const match = trimmedForMatch.match(/\\[a-zA-Z]*$/);
         if (!match) {
-            console.log("[INPUT-BLOCK] No LaTeX command found");
             return;
         }
 
         const inputKeyword = match[0];
-        console.log("[INPUT-BLOCK] Found keyword:", inputKeyword);
         const candidates = this.commands.filter(cmd => cmd.key.startsWith(inputKeyword));
         
         if (candidates.length === 0) {
-            console.log("[INPUT-BLOCK] No candidates found");
             return;
         }
-
-        console.log("[INPUT-BLOCK] Showing autocomplete with candidates:", candidates.map(c => c.key));
 
         this.showAutoComplete(candidates, {}, inputKeyword, 'mathblock', { 
             target, 
@@ -216,31 +202,23 @@ const LatexAutoCompleter = {
     },
 
     onInputCodeMirror: function(cmContent) {
-        console.log("[DEBUG] onInputCodeMirror called");
         const editor = cmContent.editor;
         const content = cmContent.content;
         const cursor = editor.getCursor();
         const line = content.split('\n')[cursor.line] || '';
         const ch = cursor.ch;
 
-        console.log("[DEBUG] Cursor position - Line:", cursor.line, "Ch:", ch);
-        console.log("[DEBUG] Current line:", line);
-
         // 获取光标前的内容
         const textBefore = line.substring(0, ch);
-        console.log("[DEBUG] Text before cursor:", textBefore);
         
         const match = textBefore.match(/\\[a-zA-Z]*$/);
         if (!match) {
-            console.log("[DEBUG] No LaTeX command match in CodeMirror");
             return;
         }
 
-        console.log("[DEBUG] Matched LaTeX command:", match[0]);
         const inputKeyword = match[0];
         const candidates = this.commands.filter(cmd => cmd.key.startsWith(inputKeyword));
         
-        console.log("[DEBUG] Found candidates:", candidates);
         if (candidates.length === 0) return;
 
         // 创建虚拟 bookmark 以供 showAutoComplete 使用
@@ -637,35 +615,23 @@ const LatexAutoCompleter = {
     },
 
     applySnippetMathBlock: function(cmd, data, inputKeyword) {
-        console.log("[APPLY] Starting applySnippetMathBlock");
-        console.log("[APPLY] cmd:", cmd);
-        console.log("[APPLY] inputKeyword:", inputKeyword);
-        console.log("[APPLY] cmd.snippet:", cmd.snippet);
-        console.log("[APPLY] cmd.offset:", cmd.offset);
-        
         const { target, mathBlock, inputKeyword: originalKeyword } = data;
         
         // 使用传入的 inputKeyword
         const keyword = originalKeyword || inputKeyword;
-        console.log("[APPLY] Final keyword to find:", keyword);
         
         try {
             // 新策略：寻找 mathBlock 中的源文本输入框（当处于编辑模式时）
             // Typora 在编辑数学块时会显示源代码编辑器
             
             const sourceInput = mathBlock.querySelector('textarea, input[type="text"], [contenteditable="true"]');
-            console.log("[APPLY] sourceInput found:", !!sourceInput, sourceInput?.tagName);
             
             if (sourceInput && sourceInput.tagName === 'TEXTAREA') {
-                console.log("[APPLY] Using textarea source");
                 const textareaValue = sourceInput.value;
-                console.log("[APPLY] Textarea value before:", JSON.stringify(textareaValue));
                 
                 const keywordPos = textareaValue.lastIndexOf(keyword);
-                console.log("[APPLY] keywordPos:", keywordPos, "keyword:", JSON.stringify(keyword));
                 
                 if (keywordPos < 0) {
-                    console.log("[APPLY] ERROR: Could not find keyword in textarea");
                     return;
                 }
                 
@@ -674,14 +640,10 @@ const LatexAutoCompleter = {
                 const afterText = textareaValue.substring(keywordPos + keyword.length);
                 const newValue = beforeText + cmd.snippet + afterText;
                 
-                console.log("[APPLY] beforeText:", JSON.stringify(beforeText), "afterText:", JSON.stringify(afterText));
-                console.log("[APPLY] newValue:", JSON.stringify(newValue));
-                
                 sourceInput.value = newValue;
                 
                 // 设置标志，阻止触发的 input 事件被处理
                 this.suppressNextInput = true;
-                console.log("[APPLY] Set suppressNextInput flag");
                 
                 // 触发 input 事件先
                 const inputEvent = new Event('input', { bubbles: true });
@@ -692,27 +654,17 @@ const LatexAutoCompleter = {
                 const cursorOffset = snippetEndOffset + (cmd.offset || 0);
                 const clampedOffset = Math.max(0, Math.min(cursorOffset, newValue.length));
                 
-                console.log("[APPLY] Cursor calculation: keywordPos=" + keywordPos + ", snippetLen=" + cmd.snippet.length + ", offset=" + cmd.offset + ", final=" + clampedOffset);
-                console.log("[APPLY] newValue.length=" + newValue.length + ", clamped=" + clampedOffset);
-                
                 // 延迟设置光标，确保 Typora 完成了初始处理
                 setTimeout(() => {
                     sourceInput.setSelectionRange(clampedOffset, clampedOffset);
                     sourceInput.focus();
-                    
-                    // 验证光标设置
-                    const actualPos = sourceInput.selectionStart;
-                    console.log("[APPLY] Cursor set to:", clampedOffset, "actual position:", actualPos);
                 }, 10);
                 
-                console.log("[APPLY] Updated textarea source");
                 this.hideAutoComplete();
-                console.log("[APPLY] Snippet applied successfully");
                 return;
             }
             
             // 如果找不到源输入框，使用原来的 DOM 修改方法但只修改公式内容
-            console.log("[APPLY] No source textarea found, using DOM modification");
             
             // 提取 $$ 和 $$ 之间的内容
             const walker = document.createTreeWalker(
@@ -727,8 +679,6 @@ const LatexAutoCompleter = {
             while (node = walker.nextNode()) {
                 allNodes.push(node);
             }
-            
-            console.log("[APPLY] Total text nodes:", allNodes.length);
             
             // 找到 $$ 标记
             let formulaStartNode = null;
@@ -761,10 +711,7 @@ const LatexAutoCompleter = {
                 }
             }
             
-            console.log("[APPLY] Formula boundaries - startNode:", !!formulaStartNode, "endNode:", !!formulaEndNode);
-            
             if (!formulaStartNode || !formulaEndNode) {
-                console.log("[APPLY] ERROR: Could not find formula boundaries");
                 return;
             }
             
@@ -783,11 +730,8 @@ const LatexAutoCompleter = {
                 formulaText += formulaEndNode.textContent.substring(0, formulaEndOffset);
             }
             
-            console.log("[APPLY] Formula text:", JSON.stringify(formulaText.substring(0, 50)));
-            
             const keywordPos = formulaText.lastIndexOf(keyword);
             if (keywordPos < 0) {
-                console.log("[APPLY] ERROR: Could not find keyword in formula");
                 return;
             }
             
@@ -810,8 +754,6 @@ const LatexAutoCompleter = {
                 finalRange.collapse(true);
                 selection.removeAllRanges();
                 selection.addRange(finalRange);
-                
-                console.log("[APPLY] Updated single-node formula");
             } else {
                 // 多节点情况：需要小心处理，确保保留 $$ 标记
                 const beforePrefix = formulaStartNode.textContent.substring(0, formulaStartOffset);
@@ -853,24 +795,15 @@ const LatexAutoCompleter = {
                 finalRange.collapse(true);
                 selection.removeAllRanges();
                 selection.addRange(finalRange);
-                
-                console.log("[APPLY] Updated multi-node formula");
             }
             
             this.hideAutoComplete();
-            console.log("[APPLY] Snippet applied successfully");
         } catch (e) {
-            console.error("[APPLY] Error applying snippet:", e.message);
-            console.error("[APPLY] Stack:", e.stack);
         }
     },
 
     applySnippetInline: function(cmd, inputKeyword) {
         // 为内联公式删除关键字并插入补全
-        console.log("[APPLY-INLINE] Starting applySnippetInline");
-        console.log("[APPLY-INLINE] cmd:", cmd);
-        console.log("[APPLY-INLINE] inputKeyword:", inputKeyword);
-        
         try {
             // 获取当前选区
             const selection = File.editor.selection.getRangy();
@@ -884,10 +817,7 @@ const LatexAutoCompleter = {
             const container = range.startContainer;
             const offset = range.startOffset;
             
-            console.log("[APPLY-INLINE] container.nodeType:", container.nodeType, "container.textContent:", JSON.stringify(container.textContent?.substring(0, 50)));
-            
             if (container.nodeType !== 3) { // Text node
-                console.log("[APPLY-INLINE] ERROR: Container is not a text node");
                 return;
             }
             
@@ -897,22 +827,13 @@ const LatexAutoCompleter = {
             const endPos = offset;
             const startPos = Math.max(0, endPos - inputKeyword.length);
             
-            console.log("[APPLY-INLINE] text:", JSON.stringify(text), "startPos:", startPos, "endPos:", endPos);
-            
             // 验证前面的文本确实是关键字
             const beforeKeyword = text.substring(startPos, endPos);
-            console.log("[APPLY-INLINE] beforeKeyword:", JSON.stringify(beforeKeyword), "inputKeyword:", JSON.stringify(inputKeyword));
-            
-            if (beforeKeyword !== inputKeyword) {
-                console.log("[APPLY-INLINE] WARNING: beforeKeyword doesn't match inputKeyword");
-            }
             
             // 删除关键字
             const beforeText = text.substring(0, startPos);
             const afterText = text.substring(endPos);
             const newText = beforeText + cmd.snippet + afterText;
-            
-            console.log("[APPLY-INLINE] Replacing: beforeText=' ' + cmd.snippet + afterText");
             
             // 修改文本节点
             container.textContent = newText;
@@ -921,8 +842,6 @@ const LatexAutoCompleter = {
             const snippetEndOffset = startPos + cmd.snippet.length;
             const cursorOffset = snippetEndOffset + (cmd.offset || 0);
             const clampedOffset = Math.max(0, Math.min(cursorOffset, newText.length));
-            
-            console.log("[APPLY-INLINE] Cursor calculation: startPos=" + startPos + ", cmd.snippet.length=" + cmd.snippet.length + ", offset=" + (cmd.offset || 0) + ", final=" + clampedOffset);
             
             // 设置光标位置
             const newRange = document.createRange();
@@ -933,19 +852,13 @@ const LatexAutoCompleter = {
             newSelection.removeAllRanges();
             newSelection.addRange(newRange);
             
-            console.log("[APPLY-INLINE] Cursor set to position", clampedOffset);
-            
             // 通知 Typora 编辑器内容已更新
             if (File && File.editor && File.editor.selection && File.editor.selection.scrollAdjust) {
                 File.editor.selection.scrollAdjust();
-                console.log("[APPLY-INLINE] Called scrollAdjust");
             }
             
             this.hideAutoComplete();
-            console.log("[APPLY-INLINE] Snippet applied successfully");
         } catch (e) {
-            console.error("[APPLY-INLINE] Error applying snippet:", e.message);
-            console.error("[APPLY-INLINE] Stack:", e.stack);
         }
     },
 
