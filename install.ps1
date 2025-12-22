@@ -24,7 +24,7 @@ try {
     $rootDir = (Resolve-Path (Join-Path $scriptDir ".")).Path
 
     $windowHtml = Join-Path $rootDir "window.html"
-    $windowHtmlBak = Join-Path $rootDir "window.html.katex.bak"
+    $windowHtmlBak = Join-Path $rootDir "window.html.math.bak"
 
     if (!(Test-Path $windowHtml)) {
         throw "window.html not found. Please place this script in Typora root directory."
