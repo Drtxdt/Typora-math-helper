@@ -47,11 +47,11 @@ try {
 
     Write-Host "[3/6] Preparing KaTeX Autocomplete injection..." -ForegroundColor Yellow
 
-    $customDir = Join-Path $rootDir "Typora-KeTeX-helper"
-    $pluginScript = '<script src="./Typora-KeTeX-helper/Typora-KeTeX-helper.js" defer="defer"></script>'
+    $customDir = Join-Path $rootDir "Typora-math-helper"
+    $pluginScript = '<script src="./Typora-math-helper/Typora-math-helper.js" defer="defer"></script>'
 
     if (!(Test-Path $customDir)) {
-        Write-Host "      -> Creating Typora-KeTeX-helper directory."
+        Write-Host "      -> Creating Typora-math-helper directory."
         New-Item -ItemType Directory -Path $customDir | Out-Null
     }
 
