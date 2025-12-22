@@ -76,6 +76,7 @@ const LatexAutoCompleter = {
     },
 
     hideAutoComplete: function() {
+        console.log('[HIDE] Hiding autocomplete');
         if (this.currentAutoCompleteContainer && document.body.contains(this.currentAutoCompleteContainer)) {
             document.body.removeChild(this.currentAutoCompleteContainer);
             this.currentAutoCompleteContainer = null;
@@ -90,6 +91,7 @@ const LatexAutoCompleter = {
         // 从文本末尾提取 LaTeX 命令，支持嵌套大括号
         // 例如: "{{{{\lambda}}}}" -> "\lambda"
         // 例如: "\\lambda" -> "\lambda"
+        // 重要：只返回"正在输入"的命令，已完成的命令返回 null
         
         if (!text) return null;
         
@@ -104,6 +106,14 @@ const LatexAutoCompleter = {
         const directMatch = fromBackslash.match(/^\\[a-zA-Z]*$/);
         if (directMatch) {
             return directMatch[0];
+        }
+        
+        // 检查是否命令已完成（后面跟着非字母字符）
+        // 如果反斜杠后首先是字母，然后是非字母的非大括号字符，说明命令已完成
+        const completedCommandMatch = fromBackslash.match(/^\\([a-zA-Z]+)([^a-zA-Z{])/);
+        if (completedCommandMatch) {
+            // 命令已完成，不应该显示补全
+            return null;
         }
         
         // 如果有非字母字符（如括号），需要进一步处理
@@ -341,6 +351,10 @@ const LatexAutoCompleter = {
         this.hideAutoComplete();
         
         let selectedIndex = 0;
+        
+        // 保存当前的选区信息，用于鼠标点击时使用
+        const savedSelection = window.getSelection().rangeCount > 0 ? 
+            window.getSelection().getRangeAt(0).cloneRange() : null;
 
         const container = document.createElement('div');
         container.className = 'latex-autocomplete-container';
@@ -359,6 +373,8 @@ const LatexAutoCompleter = {
         const list = document.createElement('ul');
         list.style.cssText = 'list-style: none; margin: 0; padding: 0;';
 
+        console.log('[SHOW-INLINE] Creating autocomplete menu with', candidates.length, 'items');
+
         candidates.forEach((item, index) => {
             const li = document.createElement('li');
             li.className = 'plugin-latex-item' + (index === 0 ? ' active' : '');
@@ -372,10 +388,35 @@ const LatexAutoCompleter = {
                 padding: 4px 10px;
                 cursor: pointer;
             `;
-            li.addEventListener('click', () => {
-                callbacks.beforeApply(item);
+            
+            // 添加点击事件 - 使用 mousedown 而不是 click，因为 click 时编辑器可能已经失焦
+            const clickHandler = (e) => {
+                console.log('[CLICK] Event triggered on item:', item.key);
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[CLICK] Autocomplete item clicked:', item.key);
+                // 恢复保存的选区
+                if (savedSelection) {
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(savedSelection);
+                    console.log('[CLICK] Restored selection');
+                } else {
+                    console.warn('[CLICK] No saved selection available');
+                }
+                try {
+                    console.log('[CLICK] Calling beforeApply');
+                    callbacks.beforeApply(item);
+                    console.log('[CLICK] beforeApply completed');
+                } catch (error) {
+                    console.error('Error applying autocomplete:', error);
+                }
                 this.hideAutoComplete();
-            });
+            };
+            
+            li.addEventListener('mousedown', clickHandler, true);
+            console.log('[SHOW-INLINE] Added mousedown listener to item', index, ':', item.key);
+            
             li.addEventListener('mouseover', () => {
                 Array.from(list.children).forEach(child => child.classList.remove('active'));
                 li.classList.add('active');
@@ -386,6 +427,9 @@ const LatexAutoCompleter = {
 
         container.appendChild(list);
         document.body.appendChild(container);
+        
+        console.log('[SHOW-INLINE] Menu container added to DOM');
+        console.log('[SHOW-INLINE] Container in DOM:', document.body.contains(container));
         
         // 保存容器引用
         this.currentAutoCompleteContainer = container;
@@ -427,7 +471,11 @@ const LatexAutoCompleter = {
                     return;
                 case 'Enter':
                     const cmd = candidates[selectedIndex];
-                    callbacks.beforeApply(cmd);
+                    try {
+                        callbacks.beforeApply(cmd);
+                    } catch (error) {
+                        console.error('Error applying autocomplete:', error);
+                    }
                     this.hideAutoComplete();
                     return;
                 case 'Escape':
@@ -477,10 +525,23 @@ const LatexAutoCompleter = {
                 padding: 4px 10px;
                 cursor: pointer;
             `;
-            li.addEventListener('click', () => {
+            li.addEventListener('mousedown', (e) => {
+                console.log('[CLICK-CM] Event triggered on item:', item.key);
+                e.preventDefault();
+                e.stopPropagation();
                 const cmd = item;
-                callbacks.beforeApply(cmd);
+                console.log('[CLICK-CM] Calling beforeApply');
+                try {
+                    callbacks.beforeApply(cmd);
+                    console.log('[CLICK-CM] beforeApply completed');
+                } catch (error) {
+                    console.error('Error applying autocomplete:', error);
+                }
                 this.hideAutoComplete();
+                // 恢复编辑器焦点
+                setTimeout(() => {
+                    cmEditor.focus();
+                }, 10);
             });
             li.addEventListener('mouseover', () => {
                 Array.from(list.children).forEach(child => child.classList.remove('active'));
@@ -531,7 +592,11 @@ const LatexAutoCompleter = {
                     return;
                 case 'Enter':
                     const cmd = candidates[selectedIndex];
-                    callbacks.beforeApply(cmd);
+                    try {
+                        callbacks.beforeApply(cmd);
+                    } catch (error) {
+                        console.error('Error applying autocomplete:', error);
+                    }
                     this.hideAutoComplete();
                     cmEditor.focus();
                     return;
@@ -606,8 +671,17 @@ const LatexAutoCompleter = {
                 padding: 4px 10px;
                 cursor: pointer;
             `;
-            li.addEventListener('click', () => {
-                callbacks.beforeApply(item);
+            li.addEventListener('mousedown', (e) => {
+                console.log('[CLICK-MB] Event triggered on item:', item.key);
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[CLICK-MB] Calling beforeApply');
+                try {
+                    callbacks.beforeApply(item);
+                    console.log('[CLICK-MB] beforeApply completed');
+                } catch (error) {
+                    console.error('Error applying autocomplete:', error);
+                }
                 this.hideAutoComplete();
             });
             li.addEventListener('mouseover', () => {
@@ -659,7 +733,11 @@ const LatexAutoCompleter = {
                     return;
                 case 'Enter':
                     const cmd = candidates[selectedIndex];
-                    callbacks.beforeApply(cmd);
+                    try {
+                        callbacks.beforeApply(cmd);
+                    } catch (error) {
+                        console.error('Error applying autocomplete:', error);
+                    }
                     this.hideAutoComplete();
                     return;
                 case 'Escape':
@@ -678,11 +756,15 @@ const LatexAutoCompleter = {
         // 使用传入的 inputKeyword
         const keyword = originalKeyword || inputKeyword;
         
+        console.log('[APPLY-MB] Starting apply, cmd:', cmd.key, 'keyword:', keyword);
+        
         try {
             // 新策略：寻找 mathBlock 中的源文本输入框（当处于编辑模式时）
             // Typora 在编辑数学块时会显示源代码编辑器
             
             const sourceInput = mathBlock.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+            
+            console.log('[APPLY-MB] Found sourceInput:', !!sourceInput, 'tag:', sourceInput?.tagName);
             
             if (sourceInput && sourceInput.tagName === 'TEXTAREA') {
                 const textareaValue = sourceInput.value;
@@ -690,6 +772,7 @@ const LatexAutoCompleter = {
                 const keywordPos = textareaValue.lastIndexOf(keyword);
                 
                 if (keywordPos < 0) {
+                    console.log('[APPLY-MB] Keyword not found in textarea');
                     return;
                 }
                 
@@ -698,24 +781,113 @@ const LatexAutoCompleter = {
                 const afterText = textareaValue.substring(keywordPos + keyword.length);
                 const newValue = beforeText + cmd.snippet + afterText;
                 
+                console.log('[APPLY-MB] Textarea mode - new value:', newValue);
+                
                 sourceInput.value = newValue;
                 
                 // 设置标志，阻止触发的 input 事件被处理
                 this.suppressNextInput = true;
                 
-                // 触发 input 事件先
+                // 触发多个事件来通知 Typora
+                // 1. input 事件
                 const inputEvent = new Event('input', { bubbles: true });
                 sourceInput.dispatchEvent(inputEvent);
+                
+                // 2. change 事件
+                const changeEvent = new Event('change', { bubbles: true });
+                sourceInput.dispatchEvent(changeEvent);
+                
+                // 3. beforeinput 事件
+                const beforeInputEvent = new Event('beforeinput', { bubbles: true, cancelable: true });
+                sourceInput.dispatchEvent(beforeInputEvent);
                 
                 // 计算光标位置：从关键字结束位置 + offset
                 const snippetEndOffset = keywordPos + cmd.snippet.length;
                 const cursorOffset = snippetEndOffset + (cmd.offset || 0);
                 const clampedOffset = Math.max(0, Math.min(cursorOffset, newValue.length));
                 
+                console.log('[APPLY-MB] Setting cursor to offset:', clampedOffset);
+                
                 // 延迟设置光标，确保 Typora 完成了初始处理
                 setTimeout(() => {
-                    sourceInput.setSelectionRange(clampedOffset, clampedOffset);
+                    console.log('[APPLY-MB] Before setSelectionRange - input value:', sourceInput.value);
+                    
+                    // 方法1：直接设置 selectionStart 和 selectionEnd
+                    sourceInput.selectionStart = clampedOffset;
+                    sourceInput.selectionEnd = clampedOffset;
+                    
+                    // 聚焦输入框
                     sourceInput.focus();
+                    
+                    // 方法2：使用 setSelectionRange
+                    sourceInput.setSelectionRange(clampedOffset, clampedOffset);
+                    
+                    console.log('[APPLY-MB] After setSelectionRange - selectionStart:', sourceInput.selectionStart);
+                    
+                    // 触发 select 事件
+                    const selectEvent = new Event('select', { bubbles: true });
+                    sourceInput.dispatchEvent(selectEvent);
+                    
+                    // 触发 click 事件模拟用户点击
+                    const clickEvent = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: sourceInput.offsetLeft + 10,
+                        clientY: sourceInput.offsetTop + 10
+                    });
+                    sourceInput.dispatchEvent(clickEvent);
+                    
+                    // 再次聚焦
+                    sourceInput.focus();
+                    
+                    // 触发 keyup 事件（模拟用户操作）
+                    const keyupEvent = new KeyboardEvent('keyup', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        key: 'End',
+                        code: 'End'
+                    });
+                    sourceInput.dispatchEvent(keyupEvent);
+                    
+                    // 尝试通过改变 textarea 样式来刷新光标显示
+                    const originalColor = sourceInput.style.color;
+                    sourceInput.style.color = originalColor || 'inherit';
+                    
+                    // 触发一个伪光标更新：模拟箭头键来刷新光标显示
+                    for (let i = 0; i < 2; i++) {
+                        const leftEvent = new KeyboardEvent('keydown', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            key: 'ArrowLeft',
+                            code: 'ArrowLeft',
+                            keyCode: 37
+                        });
+                        sourceInput.dispatchEvent(leftEvent);
+                        
+                        const rightEvent = new KeyboardEvent('keydown', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            key: 'ArrowRight',
+                            code: 'ArrowRight',
+                            keyCode: 39
+                        });
+                        sourceInput.dispatchEvent(rightEvent);
+                    }
+                    
+                    // 再次确认光标位置
+                    sourceInput.selectionStart = clampedOffset;
+                    sourceInput.selectionEnd = clampedOffset;
+                    
+                    // 最后再确认一次
+                    setTimeout(() => {
+                        sourceInput.selectionStart = clampedOffset;
+                        sourceInput.selectionEnd = clampedOffset;
+                        console.log('[APPLY-MB] Final selection - selectionStart:', sourceInput.selectionStart);
+                    }, 5);
                 }, 10);
                 
                 this.hideAutoComplete();
@@ -770,8 +942,11 @@ const LatexAutoCompleter = {
             }
             
             if (!formulaStartNode || !formulaEndNode) {
+                console.log('[APPLY-MB] DOM mode - Formula nodes not found');
                 return;
             }
+            
+            console.log('[APPLY-MB] DOM mode - Formula nodes found');
             
             // 只修改 $$ 之间的文本部分
             let formulaText = '';
@@ -790,12 +965,15 @@ const LatexAutoCompleter = {
             
             const keywordPos = formulaText.lastIndexOf(keyword);
             if (keywordPos < 0) {
+                console.log('[APPLY-MB] DOM mode - Keyword not found in formula');
                 return;
             }
             
             const beforeText = formulaText.substring(0, keywordPos);
             const afterText = formulaText.substring(keywordPos + keyword.length);
             const newFormulaText = beforeText + cmd.snippet + afterText;
+            
+            console.log('[APPLY-MB] DOM mode - new formula text:', newFormulaText);
             
             // 关键：只修改公式内容，保留 $$ 标记在原位置
             if (formulaStartNode === formulaEndNode) {
@@ -808,6 +986,9 @@ const LatexAutoCompleter = {
                 const snippetEndOffset = keywordPos + cmd.snippet.length;
                 const cursorOffset = snippetEndOffset + (cmd.offset || 0);
                 const clampedOffset = Math.max(0, Math.min(cursorOffset, newFormulaText.length));
+                
+                console.log('[APPLY-MB] DOM mode - Setting cursor to:', formulaStartOffset + clampedOffset, 'in formulaStartNode');
+                
                 finalRange.setStart(formulaStartNode, formulaStartOffset + clampedOffset);
                 finalRange.collapse(true);
                 selection.removeAllRanges();
@@ -863,23 +1044,37 @@ const LatexAutoCompleter = {
     applySnippetInline: function(cmd, inputKeyword) {
         // 为内联公式删除关键字并插入补全
         try {
-            // 获取当前选区
-            const selection = File.editor.selection.getRangy();
-            if (!selection || !selection.collapsed) {
-                console.log("[APPLY-INLINE] ERROR: Selection not available or not collapsed");
-                return;
+            console.log('[APPLY-INLINE] Starting apply, cmd:', cmd.key, 'keyword:', inputKeyword);
+            
+            // 获取当前选区 - 优先使用 window.getSelection()（鼠标点击时）
+            let selection = window.getSelection();
+            let range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+            
+            console.log('[APPLY-INLINE] window.getSelection range count:', selection.rangeCount);
+            
+            // 如果 window.getSelection 无效，则尝试 File.editor.selection
+            if (!range || !range.startContainer) {
+                console.log('[APPLY-INLINE] window.getSelection invalid, trying File.editor.selection');
+                const editorSelection = File.editor.selection.getRangy();
+                if (!editorSelection || !editorSelection.collapsed) {
+                    console.log("[APPLY-INLINE] ERROR: Selection not available or not collapsed");
+                    return;
+                }
+                range = editorSelection.nativeRange;
             }
             
-            // 获取光标所在的容器和偏移量
-            const range = selection.nativeRange;
             const container = range.startContainer;
             const offset = range.startOffset;
             
+            console.log('[APPLY-INLINE] Container type:', container.nodeType, 'offset:', offset);
+            
             if (container.nodeType !== 3) { // Text node
+                console.log('[APPLY-INLINE] ERROR: Not a text node');
                 return;
             }
             
             const text = container.textContent;
+            console.log('[APPLY-INLINE] Text:', text, 'text length:', text.length);
             
             // 从光标向前查找关键字
             const endPos = offset;
@@ -887,11 +1082,14 @@ const LatexAutoCompleter = {
             
             // 验证前面的文本确实是关键字
             const beforeKeyword = text.substring(startPos, endPos);
+            console.log('[APPLY-INLINE] BeforeKeyword:', beforeKeyword, 'expected:', inputKeyword);
             
             // 删除关键字
             const beforeText = text.substring(0, startPos);
             const afterText = text.substring(endPos);
             const newText = beforeText + cmd.snippet + afterText;
+            
+            console.log('[APPLY-INLINE] New text:', newText);
             
             // 修改文本节点
             container.textContent = newText;
@@ -901,22 +1099,67 @@ const LatexAutoCompleter = {
             const cursorOffset = snippetEndOffset + (cmd.offset || 0);
             const clampedOffset = Math.max(0, Math.min(cursorOffset, newText.length));
             
+            console.log('[APPLY-INLINE] Cursor offset:', clampedOffset, 'newText length:', newText.length);
+            
             // 设置光标位置
             const newRange = document.createRange();
             newRange.setStart(container, clampedOffset);
             newRange.collapse(true);
             
+            // 先更新 window.getSelection
             const newSelection = window.getSelection();
             newSelection.removeAllRanges();
             newSelection.addRange(newRange);
             
-            // 通知 Typora 编辑器内容已更新
-            if (File && File.editor && File.editor.selection && File.editor.selection.scrollAdjust) {
-                File.editor.selection.scrollAdjust();
+            // 立即检查选区是否设置正确
+            console.log('[APPLY-INLINE] After setting range - container text:', container.textContent);
+            console.log('[APPLY-INLINE] window.getSelection offset:', newSelection.getRangeAt(0).startOffset);
+            
+            // 触发 Typora 编辑器的更新事件
+            // 先尝试通过 input 事件
+            const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+            container.parentNode.dispatchEvent(inputEvent);
+            
+            // 通过 Typora 编辑器的方式更新选区
+            if (File && File.editor && File.editor.selection) {
+                try {
+                    // 尝试使用 Typora 的 getSelectionRange 和 setSelectionRange
+                    if (typeof File.editor.selection.setSelectionRange === 'function') {
+                        File.editor.selection.setSelectionRange(clampedOffset, clampedOffset);
+                        console.log('[APPLY-INLINE] Set selection range via Typora API');
+                    } else if (typeof File.editor.selection.setRange === 'function') {
+                        const newRangyRange = window.rangy.createRange();
+                        newRangyRange.setStart(container, clampedOffset);
+                        newRangyRange.collapse(true);
+                        File.editor.selection.setRange(newRangyRange);
+                        console.log('[APPLY-INLINE] Set selection via rangy');
+                    }
+                    
+                    // 触发编辑器的光标位置更新
+                    if (File.editor.selection.scrollAdjust) {
+                        File.editor.selection.scrollAdjust();
+                    }
+                } catch (e) {
+                    console.log('[APPLY-INLINE] Typora selection update failed:', e);
+                }
             }
             
+            // 强制重新渲染
+            if (File && File.editor && File.editor.cm && File.editor.cm.refresh) {
+                setTimeout(() => {
+                    try {
+                        File.editor.cm.refresh();
+                        console.log('[APPLY-INLINE] Refreshed CodeMirror');
+                    } catch (e) {
+                        console.log('[APPLY-INLINE] Refresh failed:', e);
+                    }
+                }, 10);
+            }
+            
+            console.log('[APPLY-INLINE] Apply completed successfully');
             this.hideAutoComplete();
         } catch (e) {
+            console.error("[APPLY-INLINE] Exception:", e);
         }
     },
 
