@@ -1,4 +1,4 @@
-console.log("Typora LaTeX AutoComplete Helper Loaded");
+console.log("Typora-math-helper Loaded");
 const LatexAutoCompleter = {
     configUrl: new URL('./latex-commands.json', document.currentScript.src).href,
     commands: [],
@@ -24,7 +24,7 @@ const LatexAutoCompleter = {
             const res = await fetch(this.configUrl, { cache: 'no-cache' });
             if (!res.ok) throw new Error(res.statusText);
             this.commands = await res.json();
-            console.log("LatexAutoCompleter: Commands loaded from JSON.");
+            console.log("Typora-math-helper: Commands loaded from JSON.");
         } catch (e) {
             console.error("Failed to load LaTeX commands:", e);
             this.commands = [{ key: "\\error", hint: "加载配置失败", snippet: "", offset: 0 }];
