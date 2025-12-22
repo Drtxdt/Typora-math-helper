@@ -86,6 +86,67 @@ const LatexAutoCompleter = {
         }
     },
 
+    extractLatexCommand: function(text) {
+        // 从文本末尾提取 LaTeX 命令，支持嵌套大括号
+        // 例如: "{{{{\lambda}}}}" -> "\lambda"
+        // 例如: "\\lambda" -> "\lambda"
+        
+        if (!text) return null;
+        
+        // 找最后一个反斜杠的位置
+        const lastBackslashPos = text.lastIndexOf('\\');
+        if (lastBackslashPos === -1) return null;
+        
+        // 从最后一个反斜杠开始提取
+        const fromBackslash = text.substring(lastBackslashPos);
+        
+        // 尝试直接匹配反斜杠后跟字母的模式
+        const directMatch = fromBackslash.match(/^\\[a-zA-Z]*$/);
+        if (directMatch) {
+            return directMatch[0];
+        }
+        
+        // 如果有非字母字符（如括号），需要进一步处理
+        // 计算括号平衡，在遇到未匹配的关闭括号时停止
+        let command = '';
+        let braceCount = 0;
+        
+        for (let i = 0; i < fromBackslash.length; i++) {
+            const char = fromBackslash[i];
+            
+            if (char === '{') {
+                braceCount++;
+            } else if (char === '}') {
+                braceCount--;
+                // 如果括号数变为负，说明这是未匹配的关闭括号，需要停止
+                if (braceCount < 0) {
+                    break;
+                }
+            }
+            
+            command += char;
+            
+            // 如果括号已平衡且已有内容，尝试提取命令
+            if (braceCount === 0 && i > 0) {
+                // 检查是否是有效的 LaTeX 命令（\开头+字母）
+                const cmdMatch = command.match(/^\\[a-zA-Z]+/);
+                if (cmdMatch) {
+                    return cmdMatch[0];
+                }
+            }
+        }
+        
+        // 如果末尾括号未闭合，也尝试从中提取命令
+        if (braceCount > 0) {
+            const cmdMatch = command.match(/^\\[a-zA-Z]+/);
+            if (cmdMatch) {
+                return cmdMatch[0];
+            }
+        }
+        
+        return null;
+    },
+
     getMatrixEditorContent: function() {
         // 处理 CodeMirror 编辑器（块级公式）
         if (window.matrix && window.matrix.widgetNode && window.matrix.editor) {
@@ -133,12 +194,11 @@ const LatexAutoCompleter = {
         const textBefore = range.toString();
         range.moveToBookmark(bookmark);
         
-        const match = textBefore.match(/\\[a-zA-Z]*$/);
-        if (!match) {
+        const inputKeyword = this.extractLatexCommand(textBefore);
+        if (!inputKeyword) {
             return;
         }
 
-        const inputKeyword = match[0];
         const candidates = this.commands.filter(cmd => cmd.key.startsWith(inputKeyword));
         
         if (candidates.length === 0) return;
@@ -182,12 +242,11 @@ const LatexAutoCompleter = {
         const trimmedForMatch = fullText.trim();
         
         // 匹配末尾的 LaTeX 命令
-        const match = trimmedForMatch.match(/\\[a-zA-Z]*$/);
-        if (!match) {
+        const inputKeyword = this.extractLatexCommand(trimmedForMatch);
+        if (!inputKeyword) {
             return;
         }
 
-        const inputKeyword = match[0];
         const candidates = this.commands.filter(cmd => cmd.key.startsWith(inputKeyword));
         
         if (candidates.length === 0) {
@@ -211,12 +270,11 @@ const LatexAutoCompleter = {
         // 获取光标前的内容
         const textBefore = line.substring(0, ch);
         
-        const match = textBefore.match(/\\[a-zA-Z]*$/);
-        if (!match) {
+        const inputKeyword = this.extractLatexCommand(textBefore);
+        if (!inputKeyword) {
             return;
         }
 
-        const inputKeyword = match[0];
         const candidates = this.commands.filter(cmd => cmd.key.startsWith(inputKeyword));
         
         if (candidates.length === 0) return;
