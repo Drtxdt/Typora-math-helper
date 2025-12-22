@@ -1,6 +1,6 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$Host.UI.RawUI.WindowTitle = "Typora KaTeX Autocomplete Installer"
+$Host.UI.RawUI.WindowTitle = "Typora math Autocomplete Installer"
 
 # --- Self elevation ---
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal(
@@ -45,7 +45,7 @@ try {
         throw "Unable to determine Typora version."
     }
 
-    Write-Host "[3/6] Preparing KaTeX Autocomplete injection..." -ForegroundColor Yellow
+    Write-Host "[3/6] Preparing math Autocomplete injection..." -ForegroundColor Yellow
 
     $customDir = Join-Path $rootDir "Typora-math-helper"
     $pluginScript = '<script src="./Typora-math-helper/Typora-math-helper.js" defer="defer"></script>'
@@ -58,7 +58,7 @@ try {
     $content = Get-Content -Path $windowHtml -Raw -Encoding UTF8
 
     if ($content -match [Regex]::Escape($pluginScript)) {
-        Write-Host "      -> KaTeX Autocomplete already installed." -ForegroundColor Green
+        Write-Host "      -> math Autocomplete already installed." -ForegroundColor Green
         return
     }
 
@@ -69,7 +69,7 @@ try {
     Write-Host "[4/6] Backing up window.html..." -ForegroundColor Yellow
     Copy-Item $windowHtml $windowHtmlBak -Force
 
-    Write-Host "[5/6] Injecting KaTeX Autocomplete script..." -ForegroundColor Yellow
+    Write-Host "[5/6] Injecting math Autocomplete script..." -ForegroundColor Yellow
 
     $replacement = $frameScript + "`n    " + $pluginScript
     $newContent = $content -replace [Regex]::Escape($frameScript), $replacement
@@ -78,7 +78,7 @@ try {
 
     Write-Host "[6/6] Done." -ForegroundColor Yellow
 
-    Write-Host "`n✅ KaTeX Autocomplete injected successfully!" -ForegroundColor Green
+    Write-Host "`n✅ math Autocomplete injected successfully!" -ForegroundColor Green
     Write-Host "It will coexist safely with existing Typora plugins."
     Write-Host "Please restart Typora."
 
