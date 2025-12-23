@@ -1,4 +1,4 @@
-console.log("Typora-math-helper Loaded");
+console.log("Typora-math-helper Loaded66");
 const LatexAutoCompleter = {
     configUrl: new URL('./latex-commands.json', document.currentScript.src).href,
     commands: [],
@@ -446,6 +446,7 @@ const LatexAutoCompleter = {
         const handleKeydown = (e) => {
             if (!document.body.contains(container)) {
                 document.removeEventListener('keydown', handleKeydown, true);
+                document.removeEventListener('click', handleClickOutside, true);
                 return;
             }
             
@@ -494,7 +495,22 @@ const LatexAutoCompleter = {
             }
         };
 
+        // 添加点击外部区域隐藏菜单的处理
+        const handleClickOutside = (e) => {
+            if (!document.body.contains(container)) {
+                document.removeEventListener('click', handleClickOutside, true);
+                return;
+            }
+            
+            // 如果点击在菜单外部，隐藏菜单
+            if (!container.contains(e.target)) {
+                console.log('[HIDE-CLICK] Hiding autocomplete due to outside click');
+                this.hideAutoComplete();
+            }
+        };
+
         document.addEventListener('keydown', handleKeydown, true);
+        document.addEventListener('click', handleClickOutside, true);
         this.currentAutoCompleteKeyboardHandler = handleKeydown;
     },
 
@@ -627,7 +643,22 @@ const LatexAutoCompleter = {
             }
         };
 
+        // 添加点击外部区域隐藏菜单的处理
+        const handleClickOutside = (e) => {
+            if (!document.body.contains(container)) {
+                document.removeEventListener('click', handleClickOutside, true);
+                return;
+            }
+            
+            // 如果点击在菜单外部，隐藏菜单
+            if (!container.contains(e.target)) {
+                console.log('[HIDE-CLICK-CM] Hiding autocomplete due to outside click');
+                this.hideAutoComplete();
+            }
+        };
+
         cmEditor.getInputField().addEventListener('keydown', handleKeydown, true);
+        document.addEventListener('click', handleClickOutside, true);
         this.currentAutoCompleteKeyboardHandler = handleKeydown;
     },
 
@@ -776,7 +807,22 @@ const LatexAutoCompleter = {
             }
         };
 
+        // 添加点击外部区域隐藏菜单的处理
+        const handleClickOutside = (e) => {
+            if (!document.body.contains(container)) {
+                document.removeEventListener('click', handleClickOutside, true);
+                return;
+            }
+            
+            // 如果点击在菜单外部，隐藏菜单
+            if (!container.contains(e.target)) {
+                console.log('[HIDE-CLICK-MB] Hiding autocomplete due to outside click');
+                this.hideAutoComplete();
+            }
+        };
+
         document.addEventListener('keydown', handleKeydown, true);
+        document.addEventListener('click', handleClickOutside, true);
         this.currentAutoCompleteKeyboardHandler = handleKeydown;
     },
 
