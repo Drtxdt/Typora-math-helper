@@ -462,12 +462,22 @@ const LatexAutoCompleter = {
                     Array.from(list.children).forEach((child, idx) => {
                         child.classList.toggle('active', idx === selectedIndex);
                     });
+                    // 自动滚动菜单使选中项可见
+                    const selectedItemDown = list.children[selectedIndex];
+                    if (selectedItemDown) {
+                        selectedItemDown.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
                     return;
                 case 'ArrowUp':
                     selectedIndex = (selectedIndex - 1 + candidates.length) % candidates.length;
                     Array.from(list.children).forEach((child, idx) => {
                         child.classList.toggle('active', idx === selectedIndex);
                     });
+                    // 自动滚动菜单使选中项可见
+                    const selectedItemUp = list.children[selectedIndex];
+                    if (selectedItemUp) {
+                        selectedItemUp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
                     return;
                 case 'Enter':
                     const cmd = candidates[selectedIndex];
@@ -583,12 +593,22 @@ const LatexAutoCompleter = {
                     Array.from(list.children).forEach((child, idx) => {
                         child.classList.toggle('active', idx === selectedIndex);
                     });
+                    // 自动滚动菜单使选中项可见
+                    const selectedItemDown = list.children[selectedIndex];
+                    if (selectedItemDown) {
+                        selectedItemDown.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
                     return;
                 case 'ArrowUp':
                     selectedIndex = (selectedIndex - 1 + candidates.length) % candidates.length;
                     Array.from(list.children).forEach((child, idx) => {
                         child.classList.toggle('active', idx === selectedIndex);
                     });
+                    // 自动滚动菜单使选中项可见
+                    const selectedItemUp = list.children[selectedIndex];
+                    if (selectedItemUp) {
+                        selectedItemUp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
                     return;
                 case 'Enter':
                     const cmd = candidates[selectedIndex];
@@ -724,12 +744,22 @@ const LatexAutoCompleter = {
                     Array.from(list.children).forEach((child, idx) => {
                         child.classList.toggle('active', idx === selectedIndex);
                     });
+                    // 自动滚动菜单使选中项可见
+                    const selectedItemDown = list.children[selectedIndex];
+                    if (selectedItemDown) {
+                        selectedItemDown.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
                     return;
                 case 'ArrowUp':
                     selectedIndex = (selectedIndex - 1 + candidates.length) % candidates.length;
                     Array.from(list.children).forEach((child, idx) => {
                         child.classList.toggle('active', idx === selectedIndex);
                     });
+                    // 自动滚动菜单使选中项可见
+                    const selectedItemUp = list.children[selectedIndex];
+                    if (selectedItemUp) {
+                        selectedItemUp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
                     return;
                 case 'Enter':
                     const cmd = candidates[selectedIndex];
