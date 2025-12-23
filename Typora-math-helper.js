@@ -63,9 +63,12 @@ const LatexAutoCompleter = {
         document.addEventListener("input", (e) => {
             // 如果标记了忽略下一次 input，则跳过
             if (this.suppressNextInput) {
+                console.log('[INPUT] Suppressing input event');
                 this.suppressNextInput = false;
                 return;
             }
+            
+            console.log('[INPUT] Processing input event');
             
             // 销毁旧的补全UI（如果存在）
             this.hideAutoComplete();
@@ -85,6 +88,8 @@ const LatexAutoCompleter = {
             document.removeEventListener('keydown', this.currentAutoCompleteKeyboardHandler, true);
             this.currentAutoCompleteKeyboardHandler = null;
         }
+        // 重置 suppressNextInput 标志，以便下次输入事件能被正常处理
+        this.suppressNextInput = false;
     },
 
     extractLatexCommand: function(text) {
@@ -221,53 +226,81 @@ const LatexAutoCompleter = {
 
     onInputMathBlock: function(target, mathBlock) {
         
-        // 获取块内的文本内容（不需要精确的节点追踪）
-        const treeWalker = document.createTreeWalker(
-            mathBlock,
-            NodeFilter.SHOW_TEXT,
-            null,
-            false
-        );
+        // 优先从 textarea 中获取内容（如果存在）
+        const sourceInput = mathBlock.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+        let textForAnalysis = '';
         
-        let fullText = '';
-        let node;
-        let insideMath = false;
-        
-        while (node = treeWalker.nextNode()) {
-            const text = node.textContent;
+        if (sourceInput && sourceInput.tagName === 'TEXTAREA') {
+            // 如果有 textarea，直接使用其值
+            textForAnalysis = sourceInput.value;
+            console.log('[ONINPUT-MB] Using textarea value:', textForAnalysis);
+        } else {
+            // 否则从 DOM 中提取
+            // 获取块内的文本内容（不需要精确的节点追踪）
+            const treeWalker = document.createTreeWalker(
+                mathBlock,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
             
-            // 检查是否在 $$ 内
-            if (text.includes('$$')) {
-                insideMath = !insideMath;
-                if (!insideMath) break; // 离开数学块
-                // 提取 $$ 之后的内容
-                const parts = text.split('$$');
-                fullText += parts[parts.length - 1];
-            } else if (insideMath) {
-                fullText += text;
+            let fullText = '';
+            let node;
+            let insideMath = false;
+            
+            while (node = treeWalker.nextNode()) {
+                const text = node.textContent;
+                
+                // 检查是否在 $$ 内
+                if (text.includes('$$')) {
+                    insideMath = !insideMath;
+                    if (!insideMath) break; // 离开数学块
+                    // 提取 $$ 之后的内容
+                    const parts = text.split('$$');
+                    fullText += parts[parts.length - 1];
+                } else if (insideMath) {
+                    fullText += text;
+                }
             }
+            textForAnalysis = fullText;
+            console.log('[ONINPUT-MB] Using DOM text:', textForAnalysis);
         }
         
         // 清理末尾空白用于匹配
-        const trimmedForMatch = fullText.trim();
+        const trimmedForMatch = textForAnalysis.trim();
         
         // 匹配末尾的 LaTeX 命令
         const inputKeyword = this.extractLatexCommand(trimmedForMatch);
         if (!inputKeyword) {
+            console.log('[ONINPUT-MB] No LaTeX command found');
             return;
         }
 
         const candidates = this.commands.filter(cmd => cmd.key.startsWith(inputKeyword));
         
         if (candidates.length === 0) {
+            console.log('[ONINPUT-MB] No candidates found for:', inputKeyword);
             return;
         }
 
-        this.showAutoComplete(candidates, {}, inputKeyword, 'mathblock', { 
+        console.log('[ONINPUT-MB] Found candidates, showing menu for keyword:', inputKeyword);
+        
+        // 创建 callbacks 对象
+        const callbacks = {
+            beforeApply: (cmd) => {
+                console.log('[ONINPUT-MB] Applying command:', cmd.key, 'with inputKeyword:', inputKeyword);
+                this.applySnippetMathBlock(cmd, { 
+                    target, 
+                    mathBlock, 
+                    inputKeyword
+                }, inputKeyword);
+            }
+        };
+        
+        this.showAutoCompleteForMathBlock(candidates, { 
             target, 
-            mathBlock, 
-            inputKeyword
-        });
+            mathBlock
+        }, inputKeyword, callbacks);
     },
 
     onInputCodeMirror: function(cmContent) {
@@ -323,7 +356,7 @@ const LatexAutoCompleter = {
                     // 处理 CodeMirror 编辑器（块级公式）
                     this.applySnippetCodeMirror(cmd, cmEditor, inputKeyword);
                 } else if (type === 'mathblock') {
-                    // 处理块级公式
+                    // 处理块级公式 - 注意这里第二个参数应该是 cmEditor（实际上是 data 对象）
                     this.applySnippetMathBlock(cmd, cmEditor, inputKeyword);
                 } else {
                     // 处理内联公式
@@ -829,15 +862,12 @@ const LatexAutoCompleter = {
     applySnippetMathBlock: function(cmd, data, inputKeyword) {
         const { target, mathBlock, inputKeyword: originalKeyword } = data;
         
-        // 使用传入的 inputKeyword
+        // 优先使用传入的 inputKeyword（这来自菜单显示时的快照）
         const keyword = originalKeyword || inputKeyword;
         
         console.log('[APPLY-MB] Starting apply, cmd:', cmd.key, 'keyword:', keyword);
         
         try {
-            // 新策略：寻找 mathBlock 中的源文本输入框（当处于编辑模式时）
-            // Typora 在编辑数学块时会显示源代码编辑器
-            
             const sourceInput = mathBlock.querySelector('textarea, input[type="text"], [contenteditable="true"]');
             
             console.log('[APPLY-MB] Found sourceInput:', !!sourceInput, 'tag:', sourceInput?.tagName);
@@ -845,10 +875,38 @@ const LatexAutoCompleter = {
             if (sourceInput && sourceInput.tagName === 'TEXTAREA') {
                 const textareaValue = sourceInput.value;
                 
+                console.log('[APPLY-MB] Current textarea value:', textareaValue);
+                console.log('[APPLY-MB] Looking for keyword:', keyword);
+                
+                // 直接在 textarea 中查找关键字
                 const keywordPos = textareaValue.lastIndexOf(keyword);
                 
                 if (keywordPos < 0) {
-                    console.log('[APPLY-MB] Keyword not found in textarea');
+                    // 关键字可能已经被 Typora 处理了
+                    // 尝试寻找任何部分匹配
+                    console.log('[APPLY-MB] Keyword not found, trying partial match');
+                    
+                    // 尝试找最后一个反斜杠开始的命令
+                    const lastBackslash = textareaValue.lastIndexOf('\\');
+                    if (lastBackslash >= 0) {
+                        // 从最后一个反斜杠到末尾的内容
+                        const partialCmd = textareaValue.substring(lastBackslash);
+                        console.log('[APPLY-MB] Found partial command:', partialCmd);
+                        
+                        // 替换这个部分命令
+                        const beforeText = textareaValue.substring(0, lastBackslash);
+                        const newValue = beforeText + cmd.snippet;
+                        
+                        sourceInput.value = newValue;
+                        this.suppressNextInput = true;
+                        sourceInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        sourceInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        this.hideAutoComplete();
+                        return;
+                    }
+                    
+                    // 都找不到，返回
+                    console.log('[APPLY-MB] Could not find keyword or partial command');
                     return;
                 }
                 
@@ -862,258 +920,22 @@ const LatexAutoCompleter = {
                 sourceInput.value = newValue;
                 
                 // 设置标志，阻止触发的 input 事件被处理
+                console.log('[APPLY-MB] Setting suppressNextInput to true');
                 this.suppressNextInput = true;
                 
-                // 触发多个事件来通知 Typora
-                // 1. input 事件
-                const inputEvent = new Event('input', { bubbles: true });
-                sourceInput.dispatchEvent(inputEvent);
+                // 触发事件通知 Typora
+                sourceInput.dispatchEvent(new Event('input', { bubbles: true }));
+                sourceInput.dispatchEvent(new Event('change', { bubbles: true }));
                 
-                // 2. change 事件
-                const changeEvent = new Event('change', { bubbles: true });
-                sourceInput.dispatchEvent(changeEvent);
-                
-                // 3. beforeinput 事件
-                const beforeInputEvent = new Event('beforeinput', { bubbles: true, cancelable: true });
-                sourceInput.dispatchEvent(beforeInputEvent);
-                
-                // 计算光标位置：从关键字结束位置 + offset
-                const snippetEndOffset = keywordPos + cmd.snippet.length;
-                const cursorOffset = snippetEndOffset + (cmd.offset || 0);
-                const clampedOffset = Math.max(0, Math.min(cursorOffset, newValue.length));
-                
-                console.log('[APPLY-MB] Setting cursor to offset:', clampedOffset);
-                
-                // 延迟设置光标，确保 Typora 完成了初始处理
-                setTimeout(() => {
-                    console.log('[APPLY-MB] Before setSelectionRange - input value:', sourceInput.value);
-                    
-                    // 方法1：直接设置 selectionStart 和 selectionEnd
-                    sourceInput.selectionStart = clampedOffset;
-                    sourceInput.selectionEnd = clampedOffset;
-                    
-                    // 聚焦输入框
-                    sourceInput.focus();
-                    
-                    // 方法2：使用 setSelectionRange
-                    sourceInput.setSelectionRange(clampedOffset, clampedOffset);
-                    
-                    console.log('[APPLY-MB] After setSelectionRange - selectionStart:', sourceInput.selectionStart);
-                    
-                    // 触发 select 事件
-                    const selectEvent = new Event('select', { bubbles: true });
-                    sourceInput.dispatchEvent(selectEvent);
-                    
-                    // 触发 click 事件模拟用户点击
-                    const clickEvent = new MouseEvent('click', {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window,
-                        clientX: sourceInput.offsetLeft + 10,
-                        clientY: sourceInput.offsetTop + 10
-                    });
-                    sourceInput.dispatchEvent(clickEvent);
-                    
-                    // 再次聚焦
-                    sourceInput.focus();
-                    
-                    // 触发 keyup 事件（模拟用户操作）
-                    const keyupEvent = new KeyboardEvent('keyup', {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window,
-                        key: 'End',
-                        code: 'End'
-                    });
-                    sourceInput.dispatchEvent(keyupEvent);
-                    
-                    // 尝试通过改变 textarea 样式来刷新光标显示
-                    const originalColor = sourceInput.style.color;
-                    sourceInput.style.color = originalColor || 'inherit';
-                    
-                    // 触发一个伪光标更新：模拟箭头键来刷新光标显示
-                    for (let i = 0; i < 2; i++) {
-                        const leftEvent = new KeyboardEvent('keydown', {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window,
-                            key: 'ArrowLeft',
-                            code: 'ArrowLeft',
-                            keyCode: 37
-                        });
-                        sourceInput.dispatchEvent(leftEvent);
-                        
-                        const rightEvent = new KeyboardEvent('keydown', {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window,
-                            key: 'ArrowRight',
-                            code: 'ArrowRight',
-                            keyCode: 39
-                        });
-                        sourceInput.dispatchEvent(rightEvent);
-                    }
-                    
-                    // 再次确认光标位置
-                    sourceInput.selectionStart = clampedOffset;
-                    sourceInput.selectionEnd = clampedOffset;
-                    
-                    // 最后再确认一次
-                    setTimeout(() => {
-                        sourceInput.selectionStart = clampedOffset;
-                        sourceInput.selectionEnd = clampedOffset;
-                        console.log('[APPLY-MB] Final selection - selectionStart:', sourceInput.selectionStart);
-                    }, 5);
-                }, 10);
-                
+                // 隐藏菜单
                 this.hideAutoComplete();
                 return;
             }
             
-            // 如果找不到源输入框，使用原来的 DOM 修改方法但只修改公式内容
-            
-            // 提取 $$ 和 $$ 之间的内容
-            const walker = document.createTreeWalker(
-                mathBlock,
-                NodeFilter.SHOW_TEXT,
-                null,
-                false
-            );
-            
-            let allNodes = [];
-            let node;
-            while (node = walker.nextNode()) {
-                allNodes.push(node);
-            }
-            
-            // 找到 $$ 标记
-            let formulaStartNode = null;
-            let formulaEndNode = null;
-            let formulaStartOffset = -1;
-            let formulaEndOffset = -1;
-            
-            let insideFormula = false;
-            
-            for (let i = 0; i < allNodes.length; i++) {
-                const text = allNodes[i].textContent;
-                
-                if (!insideFormula && text.includes('$$')) {
-                    const pos = text.indexOf('$$');
-                    formulaStartNode = allNodes[i];
-                    formulaStartOffset = pos + 2;
-                    insideFormula = true;
-                    
-                    const endPos = text.indexOf('$$', formulaStartOffset);
-                    if (endPos > formulaStartOffset) {
-                        formulaEndNode = allNodes[i];
-                        formulaEndOffset = endPos;
-                        break;
-                    }
-                } else if (insideFormula && text.includes('$$')) {
-                    const pos = text.indexOf('$$');
-                    formulaEndNode = allNodes[i];
-                    formulaEndOffset = pos;
-                    break;
-                }
-            }
-            
-            if (!formulaStartNode || !formulaEndNode) {
-                console.log('[APPLY-MB] DOM mode - Formula nodes not found');
-                return;
-            }
-            
-            console.log('[APPLY-MB] DOM mode - Formula nodes found');
-            
-            // 只修改 $$ 之间的文本部分
-            let formulaText = '';
-            
-            if (formulaStartNode === formulaEndNode) {
-                formulaText = formulaStartNode.textContent.substring(formulaStartOffset, formulaEndOffset);
-            } else {
-                formulaText = formulaStartNode.textContent.substring(formulaStartOffset);
-                
-                for (let i = allNodes.indexOf(formulaStartNode) + 1; i < allNodes.indexOf(formulaEndNode); i++) {
-                    formulaText += allNodes[i].textContent;
-                }
-                
-                formulaText += formulaEndNode.textContent.substring(0, formulaEndOffset);
-            }
-            
-            const keywordPos = formulaText.lastIndexOf(keyword);
-            if (keywordPos < 0) {
-                console.log('[APPLY-MB] DOM mode - Keyword not found in formula');
-                return;
-            }
-            
-            const beforeText = formulaText.substring(0, keywordPos);
-            const afterText = formulaText.substring(keywordPos + keyword.length);
-            const newFormulaText = beforeText + cmd.snippet + afterText;
-            
-            console.log('[APPLY-MB] DOM mode - new formula text:', newFormulaText);
-            
-            // 关键：只修改公式内容，保留 $$ 标记在原位置
-            if (formulaStartNode === formulaEndNode) {
-                const beforePrefix = formulaStartNode.textContent.substring(0, formulaStartOffset);
-                const afterSuffix = formulaStartNode.textContent.substring(formulaEndOffset);
-                formulaStartNode.textContent = beforePrefix + newFormulaText + afterSuffix;
-                
-                const selection = window.getSelection();
-                const finalRange = document.createRange();
-                const snippetEndOffset = keywordPos + cmd.snippet.length;
-                const cursorOffset = snippetEndOffset + (cmd.offset || 0);
-                const clampedOffset = Math.max(0, Math.min(cursorOffset, newFormulaText.length));
-                
-                console.log('[APPLY-MB] DOM mode - Setting cursor to:', formulaStartOffset + clampedOffset, 'in formulaStartNode');
-                
-                finalRange.setStart(formulaStartNode, formulaStartOffset + clampedOffset);
-                finalRange.collapse(true);
-                selection.removeAllRanges();
-                selection.addRange(finalRange);
-            } else {
-                // 多节点情况：需要小心处理，确保保留 $$ 标记
-                const beforePrefix = formulaStartNode.textContent.substring(0, formulaStartOffset);
-                const afterSuffix = formulaEndNode.textContent.substring(formulaEndOffset);
-                
-                // 更新起始节点：保留前缀和 $$，添加新公式的开头
-                const newStartContent = beforePrefix + newFormulaText.substring(0, 1);
-                formulaStartNode.textContent = newStartContent;
-                
-                // 删除所有中间节点
-                const startIdx = allNodes.indexOf(formulaStartNode);
-                const endIdx = allNodes.indexOf(formulaEndNode);
-                
-                for (let i = startIdx + 1; i < endIdx; i++) {
-                    const nodeToRemove = allNodes[i];
-                    if (nodeToRemove.parentNode) {
-                        nodeToRemove.parentNode.removeChild(nodeToRemove);
-                    }
-                }
-                
-                // 更新结束节点：将新公式的剩余部分 + 后缀 + $$
-                const remainingFormula = newFormulaText.substring(1);
-                formulaEndNode.textContent = remainingFormula + afterSuffix;
-                
-                const selection = window.getSelection();
-                const finalRange = document.createRange();
-                const snippetEndOffset = keywordPos + cmd.snippet.length;
-                const cursorOffset = snippetEndOffset + (cmd.offset || 0);
-                const clampedOffset = Math.max(0, Math.min(cursorOffset, newFormulaText.length));
-                
-                // 光标位置：可能在 formulaStartNode 或 formulaEndNode
-                if (beforePrefix.length + clampedOffset < newStartContent.length) {
-                    finalRange.setStart(formulaStartNode, beforePrefix.length + clampedOffset);
-                } else {
-                    const offsetInEnd = clampedOffset - (newStartContent.length - beforePrefix.length);
-                    finalRange.setStart(formulaEndNode, offsetInEnd);
-                }
-                
-                finalRange.collapse(true);
-                selection.removeAllRanges();
-                selection.addRange(finalRange);
-            }
-            
-            this.hideAutoComplete();
+            // 如果没找到 textarea，不做任何处理
+            console.log('[APPLY-MB] No textarea found');
         } catch (e) {
+            console.error('[APPLY-MB] Error:', e);
         }
     },
 
